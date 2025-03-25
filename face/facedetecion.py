@@ -6,6 +6,7 @@ import uuid
 import face_recognition
 import numpy as np
 import pymongo
+from datetime import datetime
 
 # 🔹 Kết nối MongoDB
 client = pymongo.MongoClient("mongodb+srv://team2:team21234@cluster0.0tdjk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
@@ -22,7 +23,7 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # 🔹 Mở camera (0: webcam mặc định, 1: iVCam)
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 
 # Lưu trạng thái nhận diện
 last_saved_time = 0
@@ -55,11 +56,6 @@ while cap.isOpened():
             # Vẽ khung quanh khuôn mặt
             cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-            # Độ tin cậy
-            confidence = round(detection.score[0] * 100, 2)
-            label = f"Face: {confidence}%"
-            cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
             # Cắt ảnh khuôn mặt
             face_img = frame[y:y + h, x:x + w]
 
@@ -88,9 +84,22 @@ while cap.isOpened():
                     # Chỉ lưu ảnh nếu thời gian cách lần trước >= 3 giây
                     current_time = time.time()
                     if current_time - last_saved_time > 3:
-                        filename = os.path.join(output_dir, f"{found_id}_{confidence}.jpg")
-                        cv2.imwrite(filename, face_img)
+                        timestamp = datetime.utcfromtimestamp(current_time).strftime('%Y-%m-%d_%H-%M-%S')
+                        filename = f"{found_id}_{timestamp}.jpg"
+                        filepath = os.path.join(output_dir, filename)
+                        cv2.imwrite(filepath, face_img)
                         last_saved_time = current_time
+
+                        # 🔹 Lưu thông tin ảnh vào MongoDB
+                        collection.update_one(
+                            {"user_id": found_id},
+                            {"$push": {"saved_images": {
+                                "filename": filename,
+                                "saved_at": current_time,
+                                "saved_at_iso": timestamp
+                            }}}
+                        )
+
                         print(f"[INFO] Lưu ảnh {filename} cho user {found_id}")
 
     cv2.imshow("Face Detection", frame)
